@@ -12,11 +12,13 @@ export class AppleTVAccessory {
   private services: Service[] = [];
   private powerStateService: Service;
   private genericServices: { [property: string]: { [value: string]: Service } } = {};
+  private readonly stateFilePath: string;
 
   constructor(
     private readonly platform: AppleTVPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    this.stateFilePath = 'state.cache.txt';
     this.atv = pyatv.device({
       name: this.accessory.context.device.name,
       host: this.accessory.context.device.host,
@@ -35,11 +37,15 @@ export class AppleTVAccessory {
     this.services.push(this.powerStateService);
     this.powerStateService.getCharacteristic(this.platform.Characteristic.On)
       .onSet(this.setOn.bind(this));
+      .onGet(this.getPowerState.bind(this));
     this.atv.on('update:powerState', (event: NodePyATVDeviceEvent | Error) => {
       if (event instanceof Error) {
         return;
       }
       this.powerStateService.getCharacteristic(this.platform.Characteristic.On).updateValue(event.newValue === NodePyATVPowerState.on);
+      event.newValue !== null
+        ? fs.writeFileSync(this.stateFilePath, event.newValue?.toString())
+        : null;
     });
 
     if (!this.accessory.context.device.generic_sensors) {
@@ -96,4 +102,7 @@ export class AppleTVAccessory {
     value ? await this.atv.turnOn() : await this.atv.turnOff();
   }
 
+  getPowerState(): boolean {
+    return fs.readFileSync(this.stateFilePath).toString() === 'on';
+  }
 }
